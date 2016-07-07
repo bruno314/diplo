@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>TEST</title>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.0.0/jquery.min.js"></script>
+
+    <script src="peer.js"></script>
+    <script src="jput.min.js"></script>
+
+    <script>
+        //        #start heartbeat
+        heartbeat_counter = 0
+        const MAIN_HEARTBEAT_INTERVAL = 5000
+
+
+        function makeid() {
+            var text = "";
+            var possible = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+
+            for (var i = 0; i < 16; i++)
+                text += possible.charAt(Math.floor(Math.random() * possible.length));
+
+            return text;
+        }
+
+        //        function d(...whatever){
+        //            console.log(...whatever)
+        //             TODO reference RW
+        //        }
+        function d(msg) {
+            console.log(msg);
+        }
+
+        local_ht = {}
+
+        //dummy data
+        local_ht['js_startup_dummy_1'] = "js_local_val_1"
+        local_ht['js_startup_dummy_2'] = "js_local_val_2"
+        // assert !exists AbstractStorage (LS multisubdomain, iDB, ...)
+        // todo Auto-backing with AbstractStorage
+
+
+        var peer = new Peer({key: 'f9f04q5mtm2kpgb9'});
+
+        //        var remote_peer_webrtc_id = window.prompt("to?");
+
+
+        let self_webrtc_id = null;
+        let peer_id = null;
+
+        peer.on('open', function (id) {
+            console.log('My peer ID is: [' + id + ']');
+            self_webrtc_id = id
+            local_ht["identity/"+self_webrtc_id] = self_webrtc_id
+        });
+
+        function accept_incomming_data(data) {
+            cmd = data['cmd'];
+            meta = data['meta'];
+            key = data['data']['key'];
+            value = data['data']['value'];
+
+//            {"cmd":"replicate", "meta":0, "key":"rec_key_1", "value":"valueof_rec_key_1"}
+            switch (cmd) {
+                case 'replicate':
+                    if ((key in local_ht)) {
+                        d("[ERR] [RECV] Replicate existing key ")
+                    } else {
+                        local_ht[key] = value;
+                        d("[OK] Replicated.")
+                    }
+                    break
+
+
+            }
+
+        }
+
+        peer.on('connection', function (conn) {
+            conn.on('data', accept_incomming_data);
+        });
+
+        function autorefresh_table() {
+            $("#tbody").html("")
+            let json = []
+            for (key__ in local_ht) {
+                json.push({"a": key__, "b": local_ht[key__]})
+            }
+            $("#tbody").jPut({
+                jsonData: json,
+                //ajax_url:"youfile.json",  if you want to call from a json file
+                name: "tbody_template"
+            });
+
+            setTimeout(autorefresh_table, 1000)
+        }
+
+
+        function obj_to_html_inplace(obj) {
+            var globalCounter = 0;
+            var tbody = document.getElementById('debug-table');
+
+            for (var i = 0; i < obj.length; i++) {
+                var tr = "<tr>";
+
+                /* Verification to add the last decimal 0 */
+                if (obj[i].value.toString().substring(obj[i].value.toString().indexOf('.'), obj[i].value.toString().length) < 2)
+                    obj[i].value += "0";
+
+                /* Must not forget the $ sign */
+                tr += "<td>" + obj[i].key + "</td>" + "<td>$" + obj[i].value.toString() + "</td></tr>";
+
+                /* We add the table row to the table body */
+                tbody.innerHTML += tr;
+            }
+        }
+
+        //run once
+        autorefresh_table()
+
+        function heartbeat() {
+            heartbeat_counter++;
+            d(`[HB] ${heartbeat_counter}`)
+
+            function process(j) {
+                j = $.parseJSON(j)
+//                d(`called w ${j}`)
+//                d(typeof j)
+                switch (j['cmd']) {
+                    case 'srv-replicate':
+                        to = j['to'];
+                        key = j['key'];
+                        send_key_to_remote_peer(to, key)
+                        break;
+                    case 'srv-setkey':
+                        d("IJ")
+                        local_ht[j['key']] = j['value']
+
+
+                }
+                setTimeout(heartbeat, 5000)
+            }
+
+//            $.get("/heartbeat",data={"peer_id":peer_id})
+            $.ajax({
+                url: "/heartbeat",
+                type: "get",
+                data: {
+                    peer_id: self_webrtc_id
+                },
+                success: process
+
+            });
+        }
+
+
+        setTimeout(heartbeat, MAIN_HEARTBEAT_INTERVAL)
+
+
+        function send_key_to_remote_peer(remote_peer_id, key) {
+//            assert conection is open
+
+            let send_conn = peer.connect(remote_peer_id)
+            console.log('conn status:' + send_conn.toString());
+            send_conn.on('open', function () {
+                send_conn.send({
+                    cmd: 'replicate',
+                    meta: 0,
+                    data: {
+                        key: key,
+                        value: local_ht[key]
+                    }
+                });
+            })
+        }
+
+
+    </script>
+</head>
+
+
+<body>
+
+<table>
+    <tr>
+        <td>self id</td>
+        <td id="selfid"></td>
+    </tr>
+    <tr>
+        <td>remote id</td>
+        <td></td>
+    </tr>
+    <tr>
+        <td></td>
+        <td>x</td>
+    </tr>
+    <tr>
+        <td></td>
+        <td>x</td>
+    </tr>
+    <tr>
+        <td></td>
+        <td>x</td>
+    </tr>
+
+</table>
+
+DBG: <br>
+<table jput="t_template">
+    <tbody jput="tbody_template">
+    <tr>
+        <td>{{a}}=></td>
+        <td>{{b}}</td>
+    </tr>
+    </tbody>
+</table>
+
+<table>
+    <tbody id="tbody">
+    </tbody>
+</table>
+
+</body>
+</html>
